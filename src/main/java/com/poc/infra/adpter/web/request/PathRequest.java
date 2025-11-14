@@ -7,7 +7,7 @@ import org.jboss.resteasy.reactive.RestForm;
 public class PathRequest {
 
     @RestForm
-    @Schema(description = "URL ou caminho do repositório", example = "https://github.com/wolwerr/order")
+    @Schema(description = "URL do Github ou caminho do repositório no PC", example = "https://github.com/wolwerr/order ou C:\\meus_projetos\\projeto")
     String path;
 
     public String getPath() { return path; }

@@ -99,6 +99,14 @@ Dev UI disponível em:
 http://localhost:8080/q/dev
 ```
 
+### Swagger UI
+
+A documentação interativa da API está disponível em:
+
+```
+http://localhost:8080/documentation
+```
+
 ---
 
 ### 2. Rodar com Docker
