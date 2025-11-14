@@ -2,20 +2,19 @@
 
 Este projeto implementa um sistema de avaliação automática de projetos utilizando Clean Architecture. Ele integra análise de código, varredura de repositório e uso de um agente baseado em IA para gerar relatórios de revisão.
 
-O backend é desenvolvido com **Quarkus**, utilizando **Java 17**, e segue uma organização modular baseada em domínio, casos de uso e adaptadores.
+O backend é desenvolvido com **Quarkus**, utilizando **Java 21**, e segue uma organização modular baseada em domínio, casos de uso e adaptadores.
 
 ---
 
 ## Tecnologias Utilizadas
 
 ### Core
-- Java 17
+- Java 21
 - Quarkus Framework
 - Maven
 
 ### Arquitetura
 - Clean Architecture
-- Domain Driven Design (conceitos essenciais)
 - Separação em camadas: Domain, Application, Infra
 
 ### Infraestrutura
@@ -41,8 +40,10 @@ O sistema realiza a avaliação automática de um projeto de software executando
 5. Recebe a análise bruta retornada pela IA.
 6. Processa e organiza os dados através do `ReportAggregator`.
 7. Retorna um **ReviewReport** completo contendo:
-    - Pontuações
-    - Comentários técnicos
+    - Resumo geral
+    - Achados
+    - Arquivo analisado
+    - O problemas encontrados
     - Sugestões de melhorias
 
 Toda a lógica principal é orquestrada pelo **ReviewProjectUseCase**.
@@ -142,9 +143,16 @@ Exemplo de resposta:
 
 ```json
 {
-  "score": 85,
-  "comments": [],
-  "improvements": []
+  "details": {
+    "resumo": "",
+    "achados": [
+      {
+        "arquivo": "",
+        "problema": "",
+        "sugestao": ""
+        }
+    ]
+  }
 }
 ```
 
