@@ -1,62 +1,175 @@
-# agentcleanarch
+# Agent Clean Architecture
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+Este projeto implementa um sistema de avaliação automática de projetos utilizando Clean Architecture. Ele integra análise de código, varredura de repositório e uso de um agente baseado em IA para gerar relatórios de revisão.
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
+O backend é desenvolvido com **Quarkus**, utilizando **Java 17**, e segue uma organização modular baseada em domínio, casos de uso e adaptadores.
 
-## Running the application in dev mode
+---
 
-You can run your application in dev mode that enables live coding using:
+## Tecnologias Utilizadas
 
-```shell script
+### Core
+- Java 17
+- Quarkus Framework
+- Maven
+
+### Arquitetura
+- Clean Architecture
+- Domain Driven Design (conceitos essenciais)
+- Separação em camadas: Domain, Application, Infra
+
+### Infraestrutura
+- RESTEasy Reactive
+- OpenAPI (Swagger)
+- Docker e Docker Compose
+- Gateways para integração com serviços externos
+
+### Testes
+- JUnit
+- Quarkus Test Framework
+
+---
+
+## O que o Sistema Faz
+
+O sistema realiza a avaliação automática de um projeto de software executando estas etapas:
+
+1. Recebe o caminho de um repositório local ou o link de um repositório no Github.
+2. Varre o conteúdo do projeto utilizando o `ProjectScanner`.
+3. Constrói o prompt de avaliação com o `PromptBuilder`.
+4. Envia o conteúdo analisado para um agente de IA configurado (OpenAiAgent).
+5. Recebe a análise bruta retornada pela IA.
+6. Processa e organiza os dados através do `ReportAggregator`.
+7. Retorna um **ReviewReport** completo contendo:
+    - Pontuações
+    - Comentários técnicos
+    - Sugestões de melhorias
+
+Toda a lógica principal é orquestrada pelo **ReviewProjectUseCase**.
+
+---
+
+## Estrutura do Projeto
+
+```
+src/
+  main/
+    java/com/poc/
+      application/
+        useCase/
+          ReviewProjectUseCase.java
+      domain/
+        entity/
+        gateway/
+      infra/
+        adapter/
+          web/
+            ReviewController.java
+        config/
+          OpenApiConfig.java
+        util/
+          RepoHelper.java
+          PromptBuilder.java
+          ReportAggregator.java
+        agent/
+          OpenAiAgent.java
+        scanner/
+          ProjectScanner.java
+
+    resources/
+      application.properties
+```
+
+---
+
+## Como Rodar o Projeto
+
+### 1. Executar em Modo Dev
+
+O Quarkus possui suporte a live reload:
+
+```
 ./mvnw quarkus:dev
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+Dev UI disponível em:
 
-## Packaging and running the application
-
-The application can be packaged using:
-
-```shell script
-./mvnw package
+```
+http://localhost:8080/q/dev
 ```
 
-It produces the `quarkus-run.jar` file in the `target/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `target/quarkus-app/lib/` directory.
+---
 
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
+### 2. Rodar com Docker
 
-If you want to build an _über-jar_, execute the following command:
+#### Build da imagem
 
-```shell script
-./mvnw package -Dquarkus.package.jar.type=uber-jar
+```
+docker build -t agent-clean-arch .
 ```
 
-The application, packaged as an _über-jar_, is now runnable using `java -jar target/*-runner.jar`.
+#### Subir com Docker Compose
 
-## Creating a native executable
+Certifique-se de configurar o arquivo `.env` com variáveis necessárias, por exemplo:
 
-You can create a native executable using:
-
-```shell script
-./mvnw package -Dnative
+```
+OPENAI_KEY=sua_chave
 ```
 
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
+Então execute:
 
-```shell script
-./mvnw package -Dnative -Dquarkus.native.container-build=true
+```
+docker compose up -d
 ```
 
-You can then execute your native executable with: `./target/agentcleanarch-1.0-SNAPSHOT-runner`
+---
 
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/maven-tooling>.
+## Endpoints
 
-## Provided Code
+### Avaliar Projeto
 
-### REST
+**POST** `/api/review`
 
-Easily start your REST Web Services
+Body:
 
-[Related guide section...](https://quarkus.io/guides/getting-started-reactive#reactive-jax-rs-resources)
+```json
+{
+  "path": "/caminho/para/seu/projeto"
+}
+```
+
+Exemplo de resposta:
+
+```json
+{
+  "score": 85,
+  "comments": [],
+  "improvements": []
+}
+```
+
+---
+
+## Configurações
+
+O arquivo `application.properties` contém configurações essenciais da aplicação:
+
+```
+quarkus.http.port=8080
+agent.model=gpt-4
+agent.api-key=${OPENAI_KEY}
+```
+
+---
+
+## Como Contribuir
+
+1. Faça um fork do repositório.
+2. Crie uma branch:
+   ```
+   git checkout -b feature/minha-feature
+   ```
+3. Envie suas melhorias com testes.
+4. Abra um Pull Request.
+
+---
