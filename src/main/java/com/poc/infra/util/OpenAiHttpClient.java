@@ -2,10 +2,14 @@ package com.poc.infra.util;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.poc.domain.exception.AiClientException;
+import com.poc.domain.gateway.AiHttpClient;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,7 +22,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Cliente HTTP para chamadas ao endpoint OpenAI com retry simples e observabilidade via logs.
  */
-public record OpenAiHttpClient(HttpClient httpClient, String apiKey, ObjectMapper mapper, int maxRetries) {
+@ApplicationScoped
+public class OpenAiHttpClient implements AiHttpClient {
 
     private static final Logger logger = LoggerFactory.getLogger(OpenAiHttpClient.class);
 
@@ -28,35 +33,52 @@ public record OpenAiHttpClient(HttpClient httpClient, String apiKey, ObjectMappe
     private static final long MAX_BACKOFF_MS = 8000L;
     private static final int MAX_BODY_SNIPPET = 1024;
 
-    public OpenAiHttpClient(HttpClient httpClient, String apiKey, ObjectMapper mapper, int maxRetries) {
-        this.httpClient = Objects.requireNonNull(httpClient, "httpClient não pode ser nulo");
-        this.apiKey = Objects.requireNonNull(apiKey, "apiKey não pode ser nulo");
+    private final HttpClient httpClient;
+    private final String apiKey;
+    private final ObjectMapper mapper;
+    private final int maxRetries;
+
+    @Inject
+    public OpenAiHttpClient(
+            ObjectMapper mapper,
+            @ConfigProperty(name = "openai.api.key", defaultValue = "") String configuredKey
+    ) {
+        this.httpClient = HttpClient.newHttpClient();
         this.mapper = Objects.requireNonNull(mapper, "mapper não pode ser nulo");
-        if (apiKey.isBlank()) {
-            throw new IllegalArgumentException("apiKey não pode ser vazia");
+
+        String envKey = System.getenv("OPENAI_API_KEY");
+        String finalKey = !configuredKey.isBlank() ? configuredKey : (envKey == null ? "" : envKey);
+
+        if (finalKey.isBlank()) {
+            throw new IllegalStateException(
+                    "OpenAI API key não configurada. " +
+                            "Defina 'openai.api.key' em application.properties ou a variável de ambiente OPENAI_API_KEY."
+            );
         }
-        this.maxRetries = Math.max(1, maxRetries);
+
+        this.apiKey = finalKey;
+        this.maxRetries = 3;
     }
 
-    /**
-     * Envia o corpo para o endpoint OpenAI com retry em 429 e 5xx.
-     *
-     * @param body corpo JSON da requisição
-     * @return conteúdo de texto retornado pelo modelo ou corpo bruto quando não for possível extrair
-     * @throws IOException          quando erro de IO ocorre ao enviar/ler resposta
-     * @throws InterruptedException quando a thread é interrompida durante espera ou envio
-     */
-    public String sendWithRetry(String body) throws IOException, InterruptedException {
+    @Override
+    public String sendWithRetry(String body) throws AiClientException {
         int tentativa = 0;
         long esperaMs = INITIAL_BACKOFF_MS;
 
         while (true) {
             tentativa++;
             long start = System.nanoTime();
-            logger.debug("Enviando requisição OpenAI - tentativa {}", tentativa);
+            logger.debug("Enviando requisição OpenAI, tentativa {}", tentativa);
 
             HttpRequest request = buildRequest(body);
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            final HttpResponse<String> response;
+            try {
+                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (Exception e) {
+                throw new AiClientException("Erro ao enviar requisição para OpenAI", e);
+            }
+
             int status = response.statusCode();
             long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
             logger.info("OpenAI HTTP status={} tentativa={} elapsedMs={}", status, tentativa, elapsedMs);
@@ -67,16 +89,17 @@ public record OpenAiHttpClient(HttpClient httpClient, String apiKey, ObjectMappe
             }
 
             if (shouldRetry(status, tentativa)) {
-                logger.warn("Status {} recebido - retry em {} ms (tentativa {}/{})", status, esperaMs, tentativa, maxRetries);
+                logger.warn("Status {} recebido. Retry em {} ms (tentativa {}/{})",
+                        status, esperaMs, tentativa, maxRetries);
                 sleepWithInterruptPreserve(esperaMs);
                 esperaMs = Math.min(esperaMs * 2, MAX_BACKOFF_MS);
                 continue;
             }
 
             String bodySnippet = truncate(response.body());
-            String msg = String.format("OpenAI retornou status %d - %s", status, bodySnippet);
+            String msg = String.format("OpenAI retornou status %d, %s", status, bodySnippet);
             logger.error(msg);
-            throw new IllegalStateException(msg);
+            throw new AiClientException(msg);
         }
     }
 
@@ -108,12 +131,12 @@ public record OpenAiHttpClient(HttpClient httpClient, String apiKey, ObjectMappe
                     return Optional.of(choice0.path("text").asText(""));
                 }
             }
-        } catch (IOException e) {
-            logger.warn("Falha ao parsear JSON da resposta (retornando corpo bruto). tentativa={}", 0, e);
+        } catch (Exception e) {
+            logger.warn("Falha ao parsear JSON da resposta, retornando corpo bruto", e);
             return Optional.of(respBody);
         }
 
-        logger.debug("Resposta sem campo 'choices' esperado; retornando corpo bruto.");
+        logger.debug("Resposta sem campo 'choices' esperado, retornando corpo bruto.");
         return Optional.of(respBody);
     }
 
@@ -121,8 +144,13 @@ public record OpenAiHttpClient(HttpClient httpClient, String apiKey, ObjectMappe
         return (status == 429 || status / 100 == 5) && tentativa < maxRetries;
     }
 
-    private void sleepWithInterruptPreserve(long millis) throws InterruptedException {
-        TimeUnit.MILLISECONDS.sleep(millis);
+    private void sleepWithInterruptPreserve(long millis) throws AiClientException {
+        try {
+            TimeUnit.MILLISECONDS.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AiClientException("Thread interrompida durante backoff de retry", e);
+        }
     }
 
     private static String respBodySafe(String body) {
@@ -131,7 +159,7 @@ public record OpenAiHttpClient(HttpClient httpClient, String apiKey, ObjectMappe
 
     private static String truncate(String s) {
         if (s == null) return "";
-        if (s.length() <= OpenAiHttpClient.MAX_BODY_SNIPPET) return s;
-        return s.substring(0, OpenAiHttpClient.MAX_BODY_SNIPPET) + "...(truncated)";
+        if (s.length() <= MAX_BODY_SNIPPET) return s;
+        return s.substring(0, MAX_BODY_SNIPPET) + "...(truncated)";
     }
 }

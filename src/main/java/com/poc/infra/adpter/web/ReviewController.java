@@ -3,9 +3,10 @@ package com.poc.infra.adpter.web;
 import com.poc.application.useCase.ReviewProjectUseCase;
 import com.poc.domain.entity.ReviewReport;
 import com.poc.infra.adpter.web.request.PathRequest;
-import com.poc.infra.util.RepoHelper.PreparedRepo;
 import com.poc.infra.util.RepoHelper;
+import com.poc.infra.util.RepoHelper.PreparedRepo;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Produces;
@@ -27,6 +28,7 @@ public class ReviewController {
 
     private final ReviewProjectUseCase useCase;
 
+    @Inject
     public ReviewController(ReviewProjectUseCase useCase) {
         this.useCase = useCase;
     }

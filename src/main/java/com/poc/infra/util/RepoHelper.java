@@ -1,6 +1,7 @@
 package com.poc.infra.util;
 
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,32 +16,38 @@ public final class RepoHelper {
 
     private RepoHelper() { }
 
-    /** Recurso preparado para uso local (path resolvido ou clone temporário). */
     public record PreparedRepo(Path pathToUse, Path tempRepoDir, boolean deleteOnClose) implements AutoCloseable {
 
-        /** Nome usado pelo domínio e pelos use cases. */
-        public String localPath() { return pathToUse.toString(); }
+        public String localPath() {
+            return pathToUse.toString();
+        }
 
-        /** Compatível com try-with-resources. */
         @Override
-        public void close() { cleanup(); }
+        public void close() {
+            cleanup();
+        }
 
         public void cleanup() {
-            if (!deleteOnClose || tempRepoDir == null) return;
+            if (!deleteOnClose || tempRepoDir == null) {
+                return;
+            }
 
             try {
                 Files.walkFileTree(tempRepoDir, new SimpleFileVisitor<>() {
+
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                         safeDeleteWithRetries(file);
                         return FileVisitResult.CONTINUE;
                     }
+
                     @Override
                     public FileVisitResult visitFileFailed(Path file, IOException exc) {
                         clearReadonly(file);
                         safeDeleteWithRetries(file);
                         return FileVisitResult.CONTINUE;
                     }
+
                     @Override
                     public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
                         clearReadonly(dir);
@@ -60,7 +67,9 @@ public final class RepoHelper {
                 if (Files.getFileStore(p).supportsFileAttributeView("dos")) {
                     Files.setAttribute(p, "dos:readonly", false);
                 }
-            } catch (Exception ignored) { }
+            } catch (UnsupportedOperationException | IOException | SecurityException e) {
+                LOG.trace("Atributo readonly não pôde ser limpo para '{}'", p, e);
+            }
         }
 
         private static boolean safeDeleteWithRetries(Path p) {
@@ -68,7 +77,9 @@ public final class RepoHelper {
             final long backoffMillis = 150;
             for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                 try {
-                    if (Files.notExists(p)) return true;
+                    if (Files.notExists(p)) {
+                        return true;
+                    }
                     if (Files.isSymbolicLink(p)) {
                         Files.deleteIfExists(p);
                         return true;
@@ -76,9 +87,9 @@ public final class RepoHelper {
                     clearReadonly(p);
                     Files.deleteIfExists(p);
                     return true;
-                } catch (DirectoryNotEmptyException dne) {
+                } catch (DirectoryNotEmptyException e) {
                     sleepQuiet(backoffMillis);
-                } catch (IOException ioe) {
+                } catch (IOException e) {
                     clearReadonly(p);
                     sleepQuiet(backoffMillis);
                 }
@@ -89,41 +100,51 @@ public final class RepoHelper {
         private static void sleepQuiet(long ms) {
             try {
                 TimeUnit.MILLISECONDS.sleep(ms);
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }
     }
 
-    /** Oficial, use este nome. */
-    public static PreparedRepo prepareRepository(String projectPath) throws Exception {
-        if (projectPath == null) throw new IllegalArgumentException("projectPath é nulo");
+    public static PreparedRepo prepareRepository(String projectPath) throws IOException {
+        if (projectPath == null) {
+            throw new IllegalArgumentException("projectPath é nulo");
+        }
 
-        boolean isUrl = projectPath.startsWith("http://") || projectPath.startsWith("https://")
-                || projectPath.startsWith("git@") || projectPath.endsWith(".git");
+        boolean isUrl = projectPath.startsWith("http://")
+                || projectPath.startsWith("https://")
+                || projectPath.startsWith("git@")
+                || projectPath.endsWith(".git");
 
         if (!isUrl) {
             Path local = Paths.get(projectPath);
             if (!local.isAbsolute()) {
-                local = Paths.get(System.getProperty("user.dir")).resolve(local).normalize();
+                local = Paths.get(System.getProperty("user.dir"))
+                        .resolve(local)
+                        .normalize();
             }
+
             if (!Files.exists(local) || !Files.isDirectory(local)) {
                 throw new IllegalArgumentException("Caminho local inválido ou não é um diretório: " + local);
             }
-            return new PreparedRepo(local, null, false); // não deleta caminho local
+
+            return new PreparedRepo(local, null, false);
         }
 
         Path tempRepoDir = Files.createTempDirectory("repo-");
+
         try (Git ignored = Git.cloneRepository()
                 .setURI(projectPath)
                 .setDirectory(tempRepoDir.toFile())
                 .setCloneAllBranches(false)
                 .setDepth(1)
                 .call()) {
-        } catch (Exception e) {
-            LOG.error("Erro ao clonar repositório '{}'", projectPath, e);
+
+            return new PreparedRepo(tempRepoDir, tempRepoDir, true);
+
+        } catch (GitAPIException e) {
+            LOG.error("Falha na operação Git ao clonar '{}'", projectPath, e);
             throw new IOException("Erro ao clonar repositório " + projectPath, e);
         }
-        return new PreparedRepo(tempRepoDir, tempRepoDir, true); // apagar ao fechar
     }
 }
