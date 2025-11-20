@@ -18,10 +18,6 @@ public final class RepoHelper {
 
     public record PreparedRepo(Path pathToUse, Path tempRepoDir, boolean deleteOnClose) implements AutoCloseable {
 
-        public String localPath() {
-            return pathToUse.toString();
-        }
-
         @Override
         public void close() {
             cleanup();

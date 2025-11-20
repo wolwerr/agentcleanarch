@@ -3,6 +3,8 @@ package com.poc.infra.adpter.web;
 import com.poc.application.useCase.ReviewProjectUseCase;
 import com.poc.domain.entity.ReviewReport;
 import com.poc.infra.adpter.web.request.PathRequest;
+import com.poc.infra.adpter.web.validator.ReviewRequestValidator;
+import com.poc.infra.exception.InvalidRequestException;
 import com.poc.infra.util.RepoHelper;
 import com.poc.infra.util.RepoHelper.PreparedRepo;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -28,9 +30,12 @@ public class ReviewController {
 
     private final ReviewProjectUseCase useCase;
 
+    private final ReviewRequestValidator validator;
+
     @Inject
-    public ReviewController(ReviewProjectUseCase useCase) {
+    public ReviewController(ReviewProjectUseCase useCase, ReviewRequestValidator validator) {
         this.useCase = useCase;
+        this.validator = validator;
     }
 
     @POST
@@ -44,10 +49,13 @@ public class ReviewController {
     )
     public Response review(PathRequest request) {
         String caminhoProjeto = request == null ? null : request.getPath();
-        if (caminhoProjeto == null || caminhoProjeto.isBlank()) {
-            LOG.warn("Parâmetro 'path' ausente ou vazio na requisição");
+
+        try {
+            validator.validate(caminhoProjeto);
+        } catch (InvalidRequestException ire) {
+            LOG.warn("Parâmetro 'path' inválido na requisição: {}", ire.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
-                    .entity("Parâmetro 'path' ausente no corpo da requisição.")
+                    .entity(ire.getMessage())
                     .type(MediaType.APPLICATION_JSON)
                     .build();
         }
