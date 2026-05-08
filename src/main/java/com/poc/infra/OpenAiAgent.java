@@ -15,6 +15,7 @@ import com.poc.infra.util.ChunkSplitter;
 import com.poc.infra.util.ReportAggregator;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @ApplicationScoped
 public class OpenAiAgent implements AiAgentGateway {
@@ -32,7 +33,9 @@ public class OpenAiAgent implements AiAgentGateway {
                        PromptBuilderGateway promptBuilder,
                        ChunkSplitter chunkSplitter,
                        ReportAggregator aggregator,
-                       ObjectMapper mapper) {
+                       ObjectMapper mapper,
+                       @ConfigProperty(name = "openai.model", defaultValue = "gpt-4.1-mini") String configuredModel,
+                       @ConfigProperty(name = "openai.max-chunk-chars", defaultValue = "12000") int configuredMaxChunkChars) {
 
         this.httpClient = httpClient;
         this.promptBuilder = promptBuilder;
@@ -40,8 +43,8 @@ public class OpenAiAgent implements AiAgentGateway {
         this.aggregator = aggregator;
         this.mapper = mapper;
 
-        this.model = "gpt-4.1-mini";
-        this.maxChunkChars = 12_000;
+        this.model = configuredModel;
+        this.maxChunkChars = configuredMaxChunkChars;
     }
 
     @Override

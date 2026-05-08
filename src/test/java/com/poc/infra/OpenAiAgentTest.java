@@ -40,7 +40,7 @@ class OpenAiAgentTest {
     @BeforeEach
     void setup() {
         mapper = new ObjectMapper();
-        agent = new OpenAiAgent(httpClient, promptBuilder, chunkSplitter, aggregator, mapper);
+        agent = new OpenAiAgent(httpClient, promptBuilder, chunkSplitter, aggregator, mapper, "gpt-4.1-mini", 12_000);
     }
 
     @Test
